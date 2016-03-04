@@ -1,11 +1,10 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Configuration;
-using System.Data;
-using System.Diagnostics;
+using System.Data.Common;
 using System.Linq;
 using System.Reflection;
 using System.Text;
+using Dapper;
 using Microsoft.CSharp.RuntimeBinder;
 
 namespace Dapper
@@ -84,7 +83,7 @@ namespace Dapper
         /// <param name="transaction"></param>
         /// <param name="commandTimeout"></param>
         /// <returns>Returns a single entity by a single id from table T.</returns>
-        public static T Get<T>(this IDbConnection connection, object id, IDbTransaction transaction = null, int? commandTimeout = null)
+        public static T Get<T>(this DbConnection connection, object id, DbTransaction transaction = null, int? commandTimeout = null)
         {
             var currenttype = typeof(T);
             var idProps = GetIdProperties(currenttype).ToList();
@@ -106,9 +105,6 @@ namespace Dapper
             var dynParms = new DynamicParameters();
             dynParms.Add("@id", id);
 
-            if (Debugger.IsAttached)
-                Trace.WriteLine(String.Format("Get<{0}>: {1} with Id: {2}", currenttype, sb, id));
-
             return connection.Query<T>(sb.ToString(), dynParms, transaction, true, commandTimeout).FirstOrDefault();
         }
 
@@ -125,7 +121,7 @@ namespace Dapper
         /// <param name="transaction"></param>
         /// <param name="commandTimeout"></param>
         /// <returns>Gets a list of entities with optional exact match where conditions</returns>
-        public static IEnumerable<T> GetList<T>(this IDbConnection connection, object whereConditions, IDbTransaction transaction = null, int? commandTimeout = null)
+        public static IEnumerable<T> GetList<T>(this DbConnection connection, object whereConditions, DbTransaction transaction = null, int? commandTimeout = null)
         {
             var currenttype = typeof(T);
             var idProps = GetIdProperties(currenttype).ToList();
@@ -147,9 +143,6 @@ namespace Dapper
                 BuildWhere(sb, whereprops, (T)Activator.CreateInstance(typeof(T)));
             }
 
-            if (Debugger.IsAttached)
-                Trace.WriteLine(String.Format("GetList<{0}>: {1}", currenttype, sb));
-
             return connection.Query<T>(sb.ToString(), whereConditions, transaction, true, commandTimeout);
         }
 
@@ -166,7 +159,7 @@ namespace Dapper
         /// <param name="transaction"></param>
         /// <param name="commandTimeout"></param>
         /// <returns>Gets a list of entities with optional SQL where conditions</returns>
-        public static IEnumerable<T> GetList<T>(this IDbConnection connection, string conditions, IDbTransaction transaction = null, int? commandTimeout = null)
+        public static IEnumerable<T> GetList<T>(this DbConnection connection, string conditions, DbTransaction transaction = null, int? commandTimeout = null)
         {
             var currenttype = typeof(T);
             var idProps = GetIdProperties(currenttype).ToList();
@@ -183,10 +176,7 @@ namespace Dapper
 
             sb.Append(" " + conditions);
 
-            if (Debugger.IsAttached)
-                Trace.WriteLine(String.Format("GetList<{0}>: {1}", currenttype, sb));
-
-            return connection.Query<T>(sb.ToString(),null, transaction, true, commandTimeout);
+            return connection.Query<T>(sb.ToString(), null, transaction, true, commandTimeout);
         }
 
         /// <summary>
@@ -197,7 +187,7 @@ namespace Dapper
         /// <typeparam name="T"></typeparam>
         /// <param name="connection"></param>
         /// <returns>Gets a list of all entities</returns>
-        public static IEnumerable<T> GetList<T>(this IDbConnection connection)
+        public static IEnumerable<T> GetList<T>(this DbConnection connection)
         {
             return connection.GetList<T>(new { });
         }
@@ -219,7 +209,7 @@ namespace Dapper
         /// <param name="transaction"></param>
         /// <param name="commandTimeout"></param>
         /// <returns>Gets a paged list of entities with optional exact match where conditions</returns>
-        public static IEnumerable<T> GetListPaged<T>(this IDbConnection connection, int pageNumber, int rowsPerPage, string conditions, string orderby, IDbTransaction transaction = null, int? commandTimeout = null)
+        public static IEnumerable<T> GetListPaged<T>(this DbConnection connection, int pageNumber, int rowsPerPage, string conditions, string orderby, DbTransaction transaction = null, int? commandTimeout = null)
         {
             if (string.IsNullOrEmpty(_getPagedListSql))
                 throw new Exception("GetListPage is not supported with the current SQL Dialect");
@@ -248,10 +238,7 @@ namespace Dapper
             query = query.Replace("{RowsPerPage}", rowsPerPage.ToString());
             query = query.Replace("{OrderBy}", orderby);
             query = query.Replace("{WhereClause}", conditions);
-            query = query.Replace("{Offset}", ((pageNumber - 1) * rowsPerPage).ToString());  
-
-            if (Debugger.IsAttached)
-                Trace.WriteLine(String.Format("GetListPaged<{0}>: {1}", currenttype, query));
+            query = query.Replace("{Offset}", ((pageNumber - 1) * rowsPerPage).ToString());
 
             return connection.Query<T>(query, null, transaction, true, commandTimeout);
         }
@@ -270,7 +257,7 @@ namespace Dapper
         /// <param name="transaction"></param>
         /// <param name="commandTimeout"></param>
         /// <returns>The ID (primary key) of the newly inserted record if it is identity using the int? type, otherwise null</returns>
-        public static int? Insert(this IDbConnection connection, object entityToInsert, IDbTransaction transaction = null, int? commandTimeout = null)
+        public static int? Insert(this DbConnection connection, object entityToInsert, DbTransaction transaction = null, int? commandTimeout = null)
         {
             return Insert<int?>(connection, entityToInsert, transaction, commandTimeout);
         }
@@ -289,7 +276,7 @@ namespace Dapper
         /// <param name="transaction"></param>
         /// <param name="commandTimeout"></param>
         /// <returns>The ID (primary key) of the newly inserted record if it is identity using the defined type, otherwise null</returns>
-        public static TKey Insert<TKey>(this IDbConnection connection, object entityToInsert, IDbTransaction transaction = null, int? commandTimeout = null)
+        public static TKey Insert<TKey>(this DbConnection connection, object entityToInsert, DbTransaction transaction = null, int? commandTimeout = null)
         {
             var idProps = GetIdProperties(entityToInsert).ToList();
 
@@ -342,9 +329,6 @@ namespace Dapper
                 keyHasPredefinedValue = true;
             }
 
-            if (Debugger.IsAttached)
-                Trace.WriteLine(String.Format("Insert: {0}", sb));
-
             var r = connection.Query(sb.ToString(), entityToInsert, transaction, true, commandTimeout);
 
             if (keytype == typeof(Guid) || keyHasPredefinedValue)
@@ -368,7 +352,7 @@ namespace Dapper
         /// <param name="transaction"></param>
         /// <param name="commandTimeout"></param>
         /// <returns>The number of effected records</returns>
-        public static int Update(this IDbConnection connection, object entityToUpdate, IDbTransaction transaction = null, int? commandTimeout = null)
+        public static int Update(this DbConnection connection, object entityToUpdate, DbTransaction transaction = null, int? commandTimeout = null)
         {
             var idProps = GetIdProperties(entityToUpdate).ToList();
 
@@ -384,9 +368,6 @@ namespace Dapper
             BuildUpdateSet(entityToUpdate, sb);
             sb.Append(" where ");
             BuildWhere(sb, idProps, entityToUpdate);
-
-            if (Debugger.IsAttached)
-                Trace.WriteLine(String.Format("Update: {0}", sb));
 
             return connection.Execute(sb.ToString(), entityToUpdate, transaction, commandTimeout);
         }
@@ -404,7 +385,7 @@ namespace Dapper
         /// <param name="transaction"></param>
         /// <param name="commandTimeout"></param>
         /// <returns>The number of records effected</returns>
-        public static int Delete<T>(this IDbConnection connection, T entityToDelete, IDbTransaction transaction = null, int? commandTimeout = null)
+        public static int Delete<T>(this DbConnection connection, T entityToDelete, DbTransaction transaction = null, int? commandTimeout = null)
         {
             var idProps = GetIdProperties(entityToDelete).ToList();
 
@@ -419,9 +400,6 @@ namespace Dapper
 
             sb.Append(" where ");
             BuildWhere(sb, idProps, entityToDelete);
-
-            if (Debugger.IsAttached)
-                Trace.WriteLine(String.Format("Delete: {0}", sb));
 
             return connection.Execute(sb.ToString(), entityToDelete, transaction, commandTimeout);
         }
@@ -440,7 +418,7 @@ namespace Dapper
         /// <param name="transaction"></param>
         /// <param name="commandTimeout"></param>
         /// <returns>The number of records effected</returns>
-        public static int Delete<T>(this IDbConnection connection, object id, IDbTransaction transaction = null, int? commandTimeout = null)
+        public static int Delete<T>(this DbConnection connection, object id, DbTransaction transaction = null, int? commandTimeout = null)
         {
             var currenttype = typeof(T);
             var idProps = GetIdProperties(currenttype).ToList();
@@ -461,9 +439,6 @@ namespace Dapper
             var dynParms = new DynamicParameters();
             dynParms.Add("@id", id);
 
-            if (Debugger.IsAttached)
-                Trace.WriteLine(String.Format("Delete<{0}> {1}", currenttype, sb));
-
             return connection.Execute(sb.ToString(), dynParms, transaction, commandTimeout);
         }
 
@@ -483,7 +458,7 @@ namespace Dapper
         /// <param name="transaction"></param>
         /// <param name="commandTimeout"></param>
         /// <returns>The number of records effected</returns>
-        public static int DeleteList<T>(this IDbConnection connection, string conditions, IDbTransaction transaction = null, int? commandTimeout = null)
+        public static int DeleteList<T>(this DbConnection connection, string conditions, DbTransaction transaction = null, int? commandTimeout = null)
         {
             if (string.IsNullOrEmpty(conditions))
                 throw new ArgumentException("DeleteList<T> requires a where clause");
@@ -496,9 +471,6 @@ namespace Dapper
             var sb = new StringBuilder();
             sb.AppendFormat("Delete from {0}", name);
             sb.Append(" " + conditions);
-
-            if (Debugger.IsAttached)
-                Trace.WriteLine(String.Format("DeleteList<{0}> {1}", currenttype, sb));
 
             return connection.Execute(sb.ToString(), null, transaction, commandTimeout);
         }
@@ -516,7 +488,7 @@ namespace Dapper
         /// <param name="transaction"></param>
         /// <param name="commandTimeout"></param>
         /// <returns>Returns a count of records.</returns>
-        public static int RecordCount<T>(this IDbConnection connection, string conditions = "", IDbTransaction transaction = null, int? commandTimeout = null)
+        public static int RecordCount<T>(this DbConnection connection, string conditions = "", DbTransaction transaction = null, int? commandTimeout = null)
         {
             var currenttype = typeof(T);
             var name = GetTableName(currenttype);
@@ -524,9 +496,6 @@ namespace Dapper
             sb.Append("Select count(1)");
             sb.AppendFormat(" from {0}", name);
             sb.Append(" " + conditions);
-
-            if (Debugger.IsAttached)
-                Trace.WriteLine(String.Format("RecordCount<{0}>: {1}", currenttype, sb));
 
             return connection.Query<int>(sb.ToString(), null, transaction, true, commandTimeout).Single();
         }
@@ -653,7 +622,7 @@ namespace Dapper
         private static bool IsEditable(PropertyInfo pi)
         {
             var attributes = pi.GetCustomAttributes(false);
-            if (attributes.Length > 0)
+            if (attributes.Count() > 0)
             {
                 dynamic write = attributes.FirstOrDefault(x => x.GetType().Name == "EditableAttribute");
                 if (write != null)
@@ -671,7 +640,7 @@ namespace Dapper
         private static bool IsReadOnly(PropertyInfo pi)
         {
             var attributes = pi.GetCustomAttributes(false);
-            if (attributes.Length > 0)
+            if (attributes.Count() > 0)
             {
                 dynamic write = attributes.FirstOrDefault(x => x.GetType().Name == "ReadOnlyAttribute");
                 if (write != null)
@@ -731,7 +700,10 @@ namespace Dapper
             //var tableName = String.Format("[{0}]", type.Name);
             var tableName = Encapsulate(type.Name);
 
-            var tableattr = type.GetCustomAttributes(true).SingleOrDefault(attr => attr.GetType().Name == "TableAttribute") as dynamic;
+            var assembly =
+                Assembly.Load(new AssemblyName(type.AssemblyQualifiedName));
+
+            var tableattr = assembly.GetCustomAttributes<TableAttribute>().SingleOrDefault(attr => attr.GetType().Name == "TableAttribute") as dynamic;
             if (tableattr != null)
             {
                 //tableName = String.Format("[{0}]", tableattr.Name);
@@ -762,7 +734,6 @@ namespace Dapper
             if (columnattr != null)
             {
                 columnName = Encapsulate(columnattr.Name);
-                Trace.WriteLine(String.Format("Column name for type overridden from {0} to {1}", propertyInfo.Name, columnName));
             }
             return columnName;
         }
@@ -909,36 +880,35 @@ namespace Dapper
         public bool IsReadOnly { get; private set; }
     }
 
-}
-
-internal static class TypeExtension
-{
-    //You can't insert or update complex types. Lets filter them out.
-    public static bool IsSimpleType(this Type type)
+    internal static class TypeExtension
     {
-        var underlyingType = Nullable.GetUnderlyingType(type);
-        type = underlyingType ?? type;
-        var simpleTypes = new List<Type>
-                               {
-                                   typeof(byte),
-                                   typeof(sbyte),
-                                   typeof(short),
-                                   typeof(ushort),
-                                   typeof(int),
-                                   typeof(uint),
-                                   typeof(long),
-                                   typeof(ulong),
-                                   typeof(float),
-                                   typeof(double),
-                                   typeof(decimal),
-                                   typeof(bool),
-                                   typeof(string),
-                                   typeof(char),
-                                   typeof(Guid),
-                                   typeof(DateTime),
-                                   typeof(DateTimeOffset),
-                                   typeof(byte[])
-                               };
-        return simpleTypes.Contains(type) || type.IsEnum;
+        //You can't insert or update complex types. Lets filter them out.
+        public static bool IsSimpleType(this Type type)
+        {
+            var underlyingType = Nullable.GetUnderlyingType(type);
+            type = underlyingType ?? type;
+            var simpleTypes = new List<Type>
+            {
+                typeof(byte),
+                typeof(sbyte),
+                typeof(short),
+                typeof(ushort),
+                typeof(int),
+                typeof(uint),
+                typeof(long),
+                typeof(ulong),
+                typeof(float),
+                typeof(double),
+                typeof(decimal),
+                typeof(bool),
+                typeof(string),
+                typeof(char),
+                typeof(Guid),
+                typeof(DateTime),
+                typeof(DateTimeOffset),
+                typeof(byte[])
+            };
+            return simpleTypes.Contains(type) || type.GetTypeInfo().IsEnum;
+        }
     }
 }
